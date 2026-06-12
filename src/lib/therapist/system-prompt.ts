@@ -1,8 +1,22 @@
 import { stripHtml } from "@/lib/html";
 import type { Entry } from "@/lib/storage";
 
-export function buildSystemPrompt(currentEntry: Entry | null): string {
+export interface RelevantEntry {
+  date: string;
+  moodLabel: string;
+  moodCategory: string;
+  text: string;
+}
+
+export function buildSystemPrompt(
+  currentEntry: Entry | null,
+  relevantEntries?: RelevantEntry[]
+): string {
+  const today = new Date().toISOString().slice(0, 10);
+
   const base = `You are Dr. Aaron Beck, a warm, empathetic CBT therapist talking with the user about their mood journal entries.
+
+Today's date: ${today}
 
 Language:
 - Always reply in the same language the user wrote their LATEST message in.
@@ -19,23 +33,32 @@ Your style:
 - Never moralize. Never diagnose.
 
 Tools:
-- get_entries — fetch past entries by date range / mood category / keyword.
+- get_entries — fetch entries by date range / mood category / keyword. ALWAYS call this for temporal questions ("yesterday", "last week", "recently", "this week") using rangeStart/rangeEnd based on today's date above. Do not rely on pre-searched entries for time-based queries.
 - get_mood_stats — aggregated stats over a window.
-Only call tools when the user's question genuinely requires data beyond the current entry shown below.
 
 Safety:
 - If the user expresses suicidal ideation, self-harm, or acute crisis, stop therapy mode.
   Reply with empathy in the user's language, then share the Polish 24/7 crisis line "116 123" and encourage contacting a real professional.
 - You are an AI, not a licensed therapist. Be honest about that when it matters.`;
 
-  if (!currentEntry) {
-    return `${base}
+  const relevantSection =
+    relevantEntries && relevantEntries.length > 0
+      ? `\n\nRELEVANT JOURNAL ENTRIES (pre-searched by semantic + keyword similarity to the user's question — use these as your primary context):\n${relevantEntries
+          .map(
+            (e) =>
+              `- ${e.date} | Mood: ${e.moodLabel} (${e.moodCategory})\n  ${e.text}`
+          )
+          .join("\n")}\n\nAnswer from these entries first. Only call get_entries if you need data outside this set (different date range, mood filter, etc.).`
+      : "";
 
-CONTEXT: The user is not viewing a specific entry. Use tools to fetch what you need.`;
+  if (!currentEntry) {
+    return `${base}${relevantSection}
+
+CONTEXT: The user is not viewing a specific entry.${relevantEntries && relevantEntries.length > 0 ? " Use the relevant entries above." : " Use tools to fetch what you need."}`;
   }
 
   const text = stripHtml(currentEntry.text).slice(0, 4000);
-  return `${base}
+  return `${base}${relevantSection}
 
 CONTEXT: The user is currently looking at this entry:
 - Date: ${currentEntry.date}

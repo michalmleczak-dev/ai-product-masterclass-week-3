@@ -11,6 +11,7 @@ export interface EntryRow {
   mood_label: string;
   mood_category: string;
   text: string;
+  photos: string[];
   created_at: string;
   updated_at: string;
 }

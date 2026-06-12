@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { Camera, ChevronRight } from "lucide-react";
 
 import { MoodPill } from "@/components/MoodPill";
 import { formatPrettyDate } from "@/lib/date";
@@ -45,6 +45,12 @@ export function EntryCard({ entry, active = false }: EntryCardProps) {
             <span className="italic text-muted-foreground">No text</span>
           )}
         </p>
+        {entry.photos.length > 0 && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <Camera className="h-3 w-3" />
+            {entry.photos.length}
+          </span>
+        )}
       </div>
       <ChevronRight className="h-4 w-4 text-muted-foreground" />
     </Link>

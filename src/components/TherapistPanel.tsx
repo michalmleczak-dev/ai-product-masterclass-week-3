@@ -1,6 +1,6 @@
 "use client";
 
-import { Info, Loader2, Mic, Plus, Send, Square, X } from "lucide-react";
+import { Image, Info, Loader2, Mic, Plus, Send, Square, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCurrentEntry } from "@/hooks/useCurrentEntry";
 
 export const JOURNAL_VOICE_INPUT_EVENT = "mood-journal:voice-input";
+export const JOURNAL_ADD_PHOTO_EVENT = "mood-journal:add-photo";
 
 interface ChatMsg {
   role: "user" | "assistant";
@@ -20,6 +21,7 @@ const HELPLINE = "116 123";
 
 export function TherapistPanel() {
   const [open, setOpen] = useState(false);
+  const [fabMenuOpen, setFabMenuOpen] = useState(false);
   const { session } = useAuth();
   const { entry, label } = useCurrentEntry();
   const pathname = usePathname();
@@ -32,6 +34,7 @@ export function TherapistPanel() {
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const recorder = useAudioRecorder();
 
   useEffect(() => {
@@ -39,6 +42,18 @@ export function TherapistPanel() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, streaming]);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!fabMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setFabMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [fabMenuOpen]);
 
   if (!session) return null;
 
@@ -137,7 +152,11 @@ export function TherapistPanel() {
     const form = new FormData();
     const filename = blob.type.includes("mp4") ? "audio.mp4" : "audio.webm";
     form.append("file", blob, filename);
-    const res = await fetch("/api/transcribe", { method: "POST", body: form });
+    const res = await fetch("/api/transcribe", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: form,
+    });
     if (!res.ok) {
       const { error } = await res.json().catch(() => ({ error: "Transcription failed" }));
       setVoiceError(error || "Transcription failed");
@@ -199,7 +218,7 @@ export function TherapistPanel() {
       : fabState === "processing"
       ? "Transcribing"
       : journalMode
-      ? "Add entry by voice"
+      ? "Add to entry"
       : "Talk to therapist";
 
   const fabClass =
@@ -209,28 +228,80 @@ export function TherapistPanel() {
       ? "bg-foreground/70"
       : "bg-foreground";
 
+  const handleFabClick = () => {
+    if (fabState === "recording") {
+      stopAndDispatch();
+      return;
+    }
+    if (fabState === "processing") return;
+    if (journalMode) {
+      setFabMenuOpen((v) => !v);
+    } else {
+      handleMicClick();
+    }
+  };
+
+  const handleMenuMic = async () => {
+    setFabMenuOpen(false);
+    await startRecording();
+  };
+
+  const handleMenuPhoto = () => {
+    setFabMenuOpen(false);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event(JOURNAL_ADD_PHOTO_EVENT));
+    }
+  };
+
   return (
     <>
-      <button
-        type="button"
-        aria-label={fabLabel}
-        onClick={handleMicClick}
-        disabled={fabState === "processing"}
-        className={`fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-80 ${fabClass}`}
-      >
-        {fabState === "recording" ? (
-          <Square className="h-5 w-5 fill-current" />
-        ) : fabState === "processing" ? (
-          <Loader2 className="h-6 w-6 animate-spin" />
-        ) : journalMode ? (
-          <Plus className="h-6 w-6" />
-        ) : (
-          <Mic className="h-6 w-6" />
+      <div ref={menuRef} className="fixed bottom-6 right-6 z-40 flex flex-col items-center gap-3">
+        {/* Speed-dial menu items (visible only in journalMode + idle + menu open) */}
+        {journalMode && fabState === "idle" && fabMenuOpen && (
+          <>
+            <button
+              type="button"
+              aria-label="Dodaj zdjęcie"
+              onClick={handleMenuPhoto}
+              className="fab-item fab-item-img flex h-12 w-12 items-center justify-center rounded-full bg-foreground text-white shadow-md transition hover:scale-105"
+            >
+              <Image className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Nagraj głos"
+              onClick={handleMenuMic}
+              className="fab-item fab-item-mic flex h-12 w-12 items-center justify-center rounded-full bg-foreground text-white shadow-md transition hover:scale-105"
+            >
+              <Mic className="h-5 w-5" />
+            </button>
+          </>
         )}
-        {fabState === "recording" && (
-          <span className="absolute -top-1 -right-1 h-3 w-3 animate-pulse rounded-full bg-red-400" />
-        )}
-      </button>
+
+        {/* Main FAB */}
+        <button
+          type="button"
+          aria-label={fabLabel}
+          onClick={handleFabClick}
+          disabled={fabState === "processing"}
+          className={`flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-80 ${fabClass}`}
+        >
+          {fabState === "recording" ? (
+            <Square className="h-5 w-5 fill-current" />
+          ) : fabState === "processing" ? (
+            <Loader2 className="h-6 w-6 animate-spin" />
+          ) : journalMode ? (
+            <Plus
+              className={`h-6 w-6 transition-transform duration-200 ${fabMenuOpen ? "rotate-45" : ""}`}
+            />
+          ) : (
+            <Mic className="h-6 w-6" />
+          )}
+          {fabState === "recording" && (
+            <span className="absolute -top-1 -right-1 h-3 w-3 animate-pulse rounded-full bg-red-400" />
+          )}
+        </button>
+      </div>
 
       {open && (
         <div className="fixed inset-0 z-50 flex justify-end">

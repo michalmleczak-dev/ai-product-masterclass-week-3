@@ -1,7 +1,9 @@
 import type { Entry } from "@/lib/entry-mapper";
+import { stripHtml, truncate } from "@/lib/html";
+import { hybridSearch } from "@/lib/search";
 
 import { detectCrisis, getGrokKey, GROK_MODEL, GROK_URL } from "./grok-client";
-import { buildSystemPrompt } from "./system-prompt";
+import { buildSystemPrompt, type RelevantEntry } from "./system-prompt";
 import { runTool, THERAPIST_TOOLS } from "./tools";
 
 export interface ChatMessage {
@@ -51,8 +53,23 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
   const crisis = lastUser ? detectCrisis(lastUser.content) : false;
   if (crisis) input.onCrisis?.();
 
+  let relevantEntries: RelevantEntry[] = [];
+  try {
+    if (lastUser) {
+      const results = await hybridSearch(lastUser.content, input.accessToken, 5);
+      relevantEntries = results.map((e) => ({
+        date: e.date,
+        moodLabel: e.moodLabel,
+        moodCategory: e.moodCategory,
+        text: truncate(stripHtml(e.text), 400),
+      }));
+    }
+  } catch {
+    // silent fallback — agent użyje narzędzi normalnie
+  }
+
   const messages: ChatMessage[] = [
-    { role: "system", content: buildSystemPrompt(input.currentEntry) },
+    { role: "system", content: buildSystemPrompt(input.currentEntry, relevantEntries) },
     ...input.messages.map((m) => ({ role: m.role, content: m.content })),
   ];
 

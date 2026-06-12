@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
 
+import { requireVerifiedAuth } from "@/lib/api-auth";
+import { checkRateLimit } from "@/lib/rate-limit";
+
 export const runtime = "nodejs";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 const GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 
 export async function POST(request: Request) {
+  const auth = await requireVerifiedAuth(request);
+  if (!auth.ok) return auth.response;
+
+  const limit = checkRateLimit(auth.userId);
+  if (!limit.ok) return limit.response;
+
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { requireAuth } from "@/lib/api-auth";
+import { requireVerifiedAuth } from "@/lib/api-auth";
 import { fromRow, type Entry } from "@/lib/entry-mapper";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { makeUserClient } from "@/lib/supabase-server";
 import { AgentError, runAgent } from "@/lib/therapist/run-agent";
 
@@ -29,8 +30,11 @@ function validMessages(
 }
 
 export async function POST(request: Request) {
-  const auth = requireAuth(request);
+  const auth = await requireVerifiedAuth(request);
   if (!auth.ok) return auth.response;
+
+  const limit = checkRateLimit(auth.userId);
+  if (!limit.ok) return limit.response;
 
   let body: RequestBody;
   try {

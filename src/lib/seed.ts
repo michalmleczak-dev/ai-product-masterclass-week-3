@@ -114,6 +114,7 @@ export function ensureSeedEntries(existing: Entry[]): {
         moodLabel: spec.moodLabel,
         moodCategory: spec.moodCategory,
         text: spec.text,
+        photos: [],
         createdAt: nowIso,
         updatedAt: nowIso,
       });

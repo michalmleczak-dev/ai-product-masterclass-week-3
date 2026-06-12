@@ -7,6 +7,7 @@ export interface Entry {
   moodLabel: string;
   moodCategory: MoodCategory;
   text: string;
+  photos: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -18,6 +19,7 @@ export function fromRow(row: EntryRow): Entry {
     moodLabel: row.mood_label,
     moodCategory: row.mood_category as MoodCategory,
     text: row.text,
+    photos: row.photos ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -30,6 +32,7 @@ export function toRow(e: Entry): EntryRow {
     mood_label: e.moodLabel,
     mood_category: e.moodCategory,
     text: e.text,
+    photos: e.photos,
     created_at: e.createdAt,
     updated_at: e.updatedAt,
   };

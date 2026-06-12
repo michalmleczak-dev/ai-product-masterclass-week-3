@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { requireAuth } from "@/lib/api-auth";
+import { requireVerifiedAuth } from "@/lib/api-auth";
 import { todayISO } from "@/lib/date";
 import { fromRow, toRow, type Entry } from "@/lib/entry-mapper";
 import { getMoodDefByCategory, type MoodCategory } from "@/lib/moods";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { makeUserClient } from "@/lib/supabase-server";
 import { inferMoodScore, type MoodScore } from "@/lib/therapist/infer-mood";
 
@@ -31,8 +32,11 @@ function defaultLabel(category: MoodCategory): string {
 }
 
 export async function POST(request: Request) {
-  const auth = requireAuth(request);
+  const auth = await requireVerifiedAuth(request);
   if (!auth.ok) return auth.response;
+
+  const limit = checkRateLimit(auth.userId);
+  if (!limit.ok) return limit.response;
 
   let body: RequestBody;
   try {
@@ -110,6 +114,7 @@ export async function POST(request: Request) {
         moodLabel,
         moodCategory: category,
         text,
+        photos: [],
         createdAt: now,
         updatedAt: now,
       };

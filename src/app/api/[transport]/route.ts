@@ -182,6 +182,9 @@ const handler = createMcpHandler(
       async ({ audio_base64, mime_type, filename }, extra) => {
         const headers = (extra.requestInfo?.headers ?? {}) as IncomingHeaders;
 
+        const token = bearer(headers);
+        if (!token) return authError("Missing Bearer token");
+
         let bytes: Buffer;
         try {
           bytes = Buffer.from(audio_base64, "base64");
@@ -202,6 +205,7 @@ const handler = createMcpHandler(
         const origin = originFromHeaders(headers);
         const res = await fetch(`${origin}/api/transcribe`, {
           method: "POST",
+          headers: { authorization: `Bearer ${token}` },
           body: form,
         });
         const text = await res.text();

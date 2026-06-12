@@ -2,19 +2,20 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EntryCard } from "@/components/EntryCard";
 import { MoodTrend } from "@/components/MoodTrend";
 import { useAuth } from "@/hooks/useAuth";
 import { useJournal } from "@/hooks/useJournal";
+import type { Entry } from "@/lib/entry-mapper";
 
 const PAGE_SIZE = 5;
 
 export default function EntriesPage() {
   const { entries, ready } = useJournal();
-  const { signOut } = useAuth();
+  const { signOut, session } = useAuth();
 
   const sorted = useMemo(
     () =>
@@ -26,6 +27,11 @@ export default function EntriesPage() {
 
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Search state
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Entry[] | null>(null);
+  const [searching, setSearching] = useState(false);
 
   // Reset visible window if the underlying list shrinks (e.g. after a clear).
   useEffect(() => {
@@ -52,8 +58,39 @@ export default function EntriesPage() {
     return () => io.disconnect();
   }, [visibleCount, sorted.length]);
 
+  // Debounced hybrid search
+  useEffect(() => {
+    if (!query.trim()) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const token = session?.access_token;
+        if (!token) return;
+        const res = await fetch(
+          `/api/entries/search?q=${encodeURIComponent(query.trim())}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) throw new Error("Search failed");
+        const json = (await res.json()) as { entries: Entry[] };
+        setSearchResults(json.entries);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query, session]);
+
   const visible = sorted.slice(0, visibleCount);
   const hasMore = visibleCount < sorted.length;
+  const isSearching = query.trim().length > 0;
 
   return (
     <main className="px-5 py-6">
@@ -74,6 +111,29 @@ export default function EntriesPage() {
         </button>
       </header>
 
+      {/* Search input — widoczne zawsze gdy są wpisy */}
+      {ready && sorted.length > 0 && (
+        <div className="mb-6 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search entries…"
+            className="w-full rounded-xl border bg-background py-2.5 pl-9 pr-9 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       {!ready ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : sorted.length === 0 ? (
@@ -91,7 +151,30 @@ export default function EntriesPage() {
             <Link href="/">Today&apos;s entry</Link>
           </Button>
         </div>
+      ) : isSearching ? (
+        /* ── Tryb wyszukiwania ── */
+        <div>
+          {searching ? (
+            <p className="text-sm text-muted-foreground">Searching…</p>
+          ) : searchResults === null || searchResults.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No results for &ldquo;{query}&rdquo;.
+            </p>
+          ) : (
+            <>
+              <p className="mb-3 text-xs text-muted-foreground">
+                {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} for &ldquo;{query}&rdquo;
+              </p>
+              <div className="space-y-3">
+                {searchResults.map((entry) => (
+                  <EntryCard key={entry.id} entry={entry} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       ) : (
+        /* ── Normalny widok ── */
         <>
           <div className="mb-8">
             <MoodTrend entries={sorted} />

@@ -12,12 +12,14 @@ const JOURNAL_UPDATED_EVENT = "mood-journal:updated";
 export interface UpsertInput {
   moodLabel: string;
   text: string;
+  photos: string[];
 }
 
 export interface UseJournalResult {
   entries: Entry[] | null;
   todayEntry: Entry | null;
   upsertToday: (input: UpsertInput) => Promise<Entry>;
+  upsertEntryById: (id: string, input: UpsertInput) => Promise<Entry>;
   ready: boolean;
 }
 
@@ -69,6 +71,7 @@ export function useJournal(): UseJournalResult {
             moodLabel: input.moodLabel,
             moodCategory: def.category,
             text: input.text,
+            photos: input.photos,
             updatedAt: now,
           }
         : {
@@ -80,6 +83,7 @@ export function useJournal(): UseJournalResult {
             moodLabel: input.moodLabel,
             moodCategory: def.category,
             text: input.text,
+            photos: input.photos,
             createdAt: now,
             updatedAt: now,
           };
@@ -98,6 +102,36 @@ export function useJournal(): UseJournalResult {
     [entries]
   );
 
+  const upsertEntryById = useCallback(
+    async (id: string, input: UpsertInput): Promise<Entry> => {
+      const def = getMoodDef(input.moodLabel);
+      if (!def) throw new Error(`Unknown mood label: ${input.moodLabel}`);
+
+      const current = entries ?? (await loadEntries());
+      const existing = current.find((e) => e.id === id);
+      if (!existing) throw new Error(`Entry not found: ${id}`);
+
+      const now = new Date().toISOString();
+      const draft: Entry = {
+        ...existing,
+        moodLabel: input.moodLabel,
+        moodCategory: def.category,
+        text: input.text,
+        photos: input.photos,
+        updatedAt: now,
+      };
+
+      const saved = await upsertEntry(draft);
+      const next = current.map((e) => (e.id === id ? saved : e));
+      setEntries(next);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event(JOURNAL_UPDATED_EVENT));
+      }
+      return saved;
+    },
+    [entries]
+  );
+
   const todayEntry =
     entries === null ? null : entries.find((e) => e.date === todayISO()) ?? null;
 
@@ -105,6 +139,7 @@ export function useJournal(): UseJournalResult {
     entries,
     todayEntry,
     upsertToday,
+    upsertEntryById,
     ready: entries !== null,
   };
 }

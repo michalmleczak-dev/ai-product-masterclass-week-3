@@ -158,8 +158,7 @@ export default function McpDocsPage() {
       <Section id="auth">
         <h3 className="mb-2 text-xl font-semibold text-zinc-900">Bearer token</h3>
         <p className="mb-4 text-[14px] leading-relaxed text-zinc-700">
-          All tools except <Code>transcribe_audio</Code> require a Supabase
-          access token. Click <strong>Generate token</strong> in the top bar
+          All tools require a Supabase access token. Click <strong>Generate token</strong> in the top bar
           while signed in, copy the value, and paste it into your client config
           as <Code>Authorization: Bearer &lt;token&gt;</Code>.
         </p>
@@ -260,8 +259,8 @@ export default function McpDocsPage() {
         </h3>
         <p className="mb-4 text-[14px] leading-relaxed text-zinc-700">
           Wraps <Code>POST /api/transcribe</Code>. Accepts base64-encoded audio
-          and forwards it to Whisper v3. Max 25&nbsp;MB after decoding. No
-          Bearer token required.
+          and forwards it to Whisper v3. Max 25&nbsp;MB after decoding. Requires
+          a Bearer token, like every other tool.
         </p>
         <h4 className="mb-2 mt-6 text-[13px] font-semibold text-zinc-900">Input</h4>
         <Pre>{`{

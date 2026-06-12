@@ -5,8 +5,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
+import { Pencil } from "lucide-react";
+
 import { MoodIllustration } from "@/components/MoodIllustration";
 import { useJournal } from "@/hooks/useJournal";
+import { useSignedPhotoUrls } from "@/hooks/useSignedPhotoUrls";
 import { todayISO } from "@/lib/date";
 import { getMoodDef } from "@/lib/moods";
 import { stripHtml, truncate } from "@/lib/html";
@@ -38,6 +41,9 @@ function ResultPageInner() {
     }
     return todayEntry;
   })();
+
+  // Signed URLs for photos — must be called before any early return (Rules of Hooks)
+  const signedPhotoUrls = useSignedPhotoUrls(entry?.photos ?? []);
 
   // Once we know there's nothing to show, bounce back home.
   useEffect(() => {
@@ -92,7 +98,14 @@ function ResultPageInner() {
           <span className="text-xs uppercase tracking-wider opacity-80">
             {def.category}
           </span>
-          <span className="w-9" />
+          <Link
+            href={`/edit/${encodeURIComponent(entry.id)}`}
+            aria-label="Edit entry"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/10 hover:bg-black/20"
+            style={{ color: def.text }}
+          >
+            <Pencil className="h-4 w-4" />
+          </Link>
         </div>
 
         <div className="flex flex-1 flex-col items-center justify-center text-center">
@@ -109,6 +122,25 @@ function ResultPageInner() {
           <p className="mt-4 max-w-[300px] text-sm leading-relaxed opacity-90">
             {def.recommendation}
           </p>
+          {entry.photos.length > 0 && (
+            <div className="mt-6 flex gap-2 overflow-x-auto pb-1">
+              {entry.photos.map((path) => {
+                const src = signedPhotoUrls[path];
+                if (!src) return (
+                  <div key={path} className="h-24 w-24 shrink-0 animate-pulse rounded-xl bg-black/20" />
+                );
+                return (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={path}
+                    src={src}
+                    alt="Entry photo"
+                    className="h-24 w-24 shrink-0 rounded-xl object-cover shadow-md"
+                  />
+                );
+              })}
+            </div>
+          )}
           {preview && (
             <p className="mt-6 max-w-[320px] text-sm italic opacity-85">
               &ldquo;{preview}&rdquo;

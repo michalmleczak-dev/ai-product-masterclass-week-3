@@ -1,5 +1,6 @@
 import { stripHtml, truncate } from "@/lib/html";
 import { makeUserClient } from "@/lib/supabase-server";
+import { hybridSearch } from "@/lib/search";
 
 export interface ToolDef {
   type: "function";
@@ -16,7 +17,7 @@ export const THERAPIST_TOOLS: ToolDef[] = [
     function: {
       name: "get_entries",
       description:
-        "Fetch the user's mood journal entries with optional filters. Use when the user asks about specific days, ranges, mood categories, or keywords beyond the current entry in context.",
+        "Fetch additional mood journal entries with filters. The most relevant entries are already pre-searched and provided in the system prompt. Use this tool only when you need entries outside that set — e.g. a specific date range, a mood category filter, or more than 5 results.",
       parameters: {
         type: "object",
         properties: {
@@ -65,6 +66,16 @@ interface EntryRow {
   text: string;
 }
 
+function sevenDaysAgo(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatEntry(e: { date: string; mood: string; category: string; text: string }) {
+  return e;
+}
+
 export async function runTool(
   name: string,
   args: Record<string, unknown>,
@@ -82,17 +93,63 @@ export async function runTool(
     if (typeof args.rangeStart === "string") q = q.gte("date", args.rangeStart);
     if (typeof args.rangeEnd === "string") q = q.lte("date", args.rangeEnd);
     if (typeof args.moodCategory === "string") q = q.eq("mood_category", args.moodCategory);
+
+    let mainResults: { date: string; mood: string; category: string; text: string }[] = [];
+
     if (typeof args.keyword === "string" && args.keyword.length > 0) {
-      q = q.ilike("text", `%${args.keyword}%`);
+      try {
+        const results = await hybridSearch(args.keyword, accessToken, limit);
+        mainResults = results.map((e) => ({
+          date: e.date,
+          mood: e.moodLabel,
+          category: e.moodCategory,
+          text: truncate(stripHtml(e.text), 500),
+        }));
+      } catch {
+        // fallback to classic search if hybrid fails
+        q = q.ilike("text", `%${args.keyword}%`);
+        const { data, error } = await q;
+        if (error) return { error: error.message };
+        mainResults = (data ?? []).map((r: EntryRow) => ({
+          date: r.date,
+          mood: r.mood_label,
+          category: r.mood_category,
+          text: truncate(stripHtml(r.text), 500),
+        }));
+      }
+    } else {
+      const { data, error } = await q;
+      if (error) return { error: error.message };
+      mainResults = (data ?? []).map((r: EntryRow) => ({
+        date: r.date,
+        mood: r.mood_label,
+        category: r.mood_category,
+        text: truncate(stripHtml(r.text), 500),
+      }));
     }
-    const { data, error } = await q;
-    if (error) return { error: error.message };
-    return (data ?? []).map((r: EntryRow) => ({
+
+    // Zawsze doklejamy ostatnie 7 dni — żeby agent rozumiał pytania w stylu
+    // "wczoraj się pokłóciłem z X" bez potrzeby szukania słów kluczowych.
+    const { data: recentData } = await sb
+      .from("entries")
+      .select("id,date,mood_label,mood_category,text")
+      .gte("date", sevenDaysAgo())
+      .order("date", { ascending: false });
+
+    const recentFormatted = (recentData ?? []).map((r: EntryRow) => ({
       date: r.date,
       mood: r.mood_label,
       category: r.mood_category,
       text: truncate(stripHtml(r.text), 500),
     }));
+
+    const seenDates = new Set(mainResults.map((e) => e.date));
+    const merged = [
+      ...mainResults,
+      ...recentFormatted.filter((e) => !seenDates.has(e.date)),
+    ];
+
+    return merged.map(formatEntry);
   }
 
   if (name === "get_mood_stats") {
