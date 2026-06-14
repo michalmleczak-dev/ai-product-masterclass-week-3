@@ -1,6 +1,6 @@
 "use client";
 
-import { Image, Info, Loader2, Mic, Plus, Send, Square, X } from "lucide-react";
+import { Image, Info, Loader2, MessageCircle, Mic, Plus, Send, Square, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -219,7 +219,9 @@ export function TherapistPanel() {
       ? "Transcribing"
       : journalMode
       ? "Add to entry"
-      : "Talk to therapist";
+      : open
+      ? "Close chat"
+      : "Open chat";
 
   const fabClass =
     fabState === "recording"
@@ -237,7 +239,7 @@ export function TherapistPanel() {
     if (journalMode) {
       setFabMenuOpen((v) => !v);
     } else {
-      handleMicClick();
+      setOpen((v) => !v);
     }
   };
 
@@ -295,7 +297,7 @@ export function TherapistPanel() {
               className={`h-6 w-6 transition-transform duration-200 ${fabMenuOpen ? "rotate-45" : ""}`}
             />
           ) : (
-            <Mic className="h-6 w-6" />
+            <MessageCircle className={`h-6 w-6 transition-transform duration-200 ${open ? "scale-90" : ""}`} />
           )}
           {fabState === "recording" && (
             <span className="absolute -top-1 -right-1 h-3 w-3 animate-pulse rounded-full bg-red-400" />

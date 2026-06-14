@@ -7,6 +7,7 @@ import { FileText, PenSquare } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EntryCard } from "@/components/EntryCard";
+import { useAuth } from "@/hooks/useAuth";
 import { useJournal } from "@/hooks/useJournal";
 
 /**
@@ -24,6 +25,7 @@ export function DesktopSidebar() {
 
 function SidebarInner() {
   const { entries, ready } = useJournal();
+  const { signOut } = useAuth();
   const pathname = usePathname();
   const search = useSearchParams();
   // On `/result?id=X` we highlight that id; on `/` we highlight today's entry.
@@ -50,18 +52,18 @@ function SidebarInner() {
           </h2>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/docs"
+          <Button
+            asChild
+            variant={pathname === "/docs" ? "secondary" : "ghost"}
+            size="icon"
+            className="h-8 w-8"
             title="API Documentation"
             aria-label="API Documentation"
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ${
-              pathname === "/docs"
-                ? "border-foreground/30 bg-muted text-foreground"
-                : "border-input"
-            }`}
           >
-            <FileText className="h-3.5 w-3.5" />
-          </Link>
+            <Link href="/docs">
+              <FileText className="h-4 w-4" />
+            </Link>
+          </Button>
           <Button
             asChild
             size="sm"
@@ -91,10 +93,10 @@ function SidebarInner() {
           ))
         )}
       </div>
-      <footer className="border-t bg-background/60 px-5 py-3">
+      <footer className="flex items-center justify-between border-t bg-background/60 px-5 py-3">
         <Link
           href="/entries"
-          className={`text-xs underline-offset-4 hover:underline ${
+          className={`text-xs transition-colors underline-offset-4 hover:underline ${
             pathname === "/entries"
               ? "font-medium text-foreground"
               : "text-muted-foreground"
@@ -102,6 +104,12 @@ function SidebarInner() {
         >
           View mood trend →
         </Link>
+        <button
+          onClick={signOut}
+          className="text-xs text-muted-foreground transition-colors underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Sign out
+        </button>
       </footer>
     </aside>
   );

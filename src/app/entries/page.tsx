@@ -95,20 +95,12 @@ export default function EntriesPage() {
   return (
     <main className="px-5 py-6">
       <header className="mb-6 flex items-center gap-3">
-        <Link
-          href="/"
-          aria-label="Back"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full border hover:bg-accent"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <Button asChild variant="outline" size="icon" className="shrink-0 rounded-full">
+          <Link href="/" aria-label="Back">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
         <h1 className="text-2xl font-bold leading-tight">Your Journal</h1>
-        <button
-          onClick={signOut}
-          className="ml-auto text-xs text-muted-foreground underline-offset-4 hover:underline"
-        >
-          Sign out
-        </button>
       </header>
 
       {/* Search input — widoczne zawsze gdy są wpisy */}

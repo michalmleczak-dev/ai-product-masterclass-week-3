@@ -101,6 +101,7 @@ export function MoodTrend({ entries }: MoodTrendProps) {
           points={data.points}
           startDate={data.startDate}
           endDate={data.today}
+          range={range}
         />
       )}
     </section>
@@ -162,43 +163,44 @@ function TrendChart({
   points,
   startDate,
   endDate,
+  range,
 }: {
   points: TrendPoint[];
   startDate: string;
   endDate: string;
+  range: Range;
 }) {
-  // viewBox proportions chosen to match the rendered aspect ratio, so circles
-  // stay round (preserveAspectRatio defaults to "xMidYMid meet" — no stretch).
   const W = 400;
   const H = 260;
-  const PAD_LEFT = 78; // room for category labels on the left
+  const PAD_LEFT = 78;
   const PAD_RIGHT = 16;
   const PAD_TOP = 16;
   const PAD_BOT = 40;
 
+  const span = Math.max(1, dateDiffDays(startDate, endDate));
+  const displayPoints =
+    range === "year" ? aggregateByMonth(points, startDate, span) : points;
+
   const xToPx = (x: number) => PAD_LEFT + x * (W - PAD_LEFT - PAD_RIGHT);
   const yToPx = (s: number) => PAD_TOP + (1 - s) * (H - PAD_TOP - PAD_BOT);
 
-  // Smooth path through points
   const linePath = buildSmoothPath(
-    points.map((p) => ({ x: xToPx(p.x), y: yToPx(p.score) }))
+    displayPoints.map((p) => ({ x: xToPx(p.x), y: yToPx(p.score) }))
   );
   const bottomY = H - PAD_BOT;
-  const firstX = xToPx(points[0].x);
-  const lastX = xToPx(points[points.length - 1].x);
+  const firstX = xToPx(displayPoints[0].x);
+  const lastX = xToPx(displayPoints[displayPoints.length - 1].x);
   const areaPath = `${linePath} L ${lastX.toFixed(2)} ${bottomY} L ${firstX.toFixed(
     2
   )} ${bottomY} Z`;
 
-  // Unique IDs per chart so multiple charts on a page don't collide.
-  const seed = `${startDate}-${endDate}-${points.length}`;
+  const seed = `${startDate}-${endDate}-${displayPoints.length}`;
   const lineGradId = `line-${seed}`;
   const fillGradId = `fill-${seed}`;
 
-  const stops = points.map((p) => ({ offset: p.x * 100, color: p.color }));
+  const stops = displayPoints.map((p) => ({ offset: p.x * 100, color: p.color }));
 
-  // Decide how often to label dates so they don't overlap. Aim for ~6 labels.
-  const tickStride = Math.max(1, Math.ceil(points.length / 6));
+  const labeledIndices = computeLabeledIndices(displayPoints, range);
 
   return (
     <div className="rounded-xl border bg-card p-3">
@@ -281,11 +283,10 @@ function TrendChart({
           strokeLinecap="round"
         />
 
-        {/* X-axis ticks + date labels under every point (stride-thinned) */}
-        {points.map((p, i) => {
+        {/* X-axis ticks + date labels (range-aware) */}
+        {displayPoints.map((p, i) => {
           const cx = xToPx(p.x);
-          const showLabel =
-            i % tickStride === 0 || i === points.length - 1;
+          const showLabel = labeledIndices.has(i);
           return (
             <g key={`tick-${i}`}>
               <line
@@ -304,15 +305,15 @@ function TrendChart({
                   fill="#6B7280"
                   textAnchor="middle"
                 >
-                  {formatDateTick(p.date, i === 0)}
+                  {formatTickLabel(p.date, range)}
                 </text>
               )}
             </g>
           );
         })}
 
-        {/* Markers (drawn last so they sit above the line) */}
-        {points.map((p, i) => (
+        {/* Markers (drawn last so they sit above the line) — hidden for year range */}
+        {range !== "year" && displayPoints.map((p, i) => (
           <circle
             key={`pt-${i}`}
             cx={xToPx(p.x)}
@@ -336,29 +337,44 @@ const TICK_MONTHS = [
   "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec",
 ];
 
-function ordinalSuffix(n: number): string {
-  const v = n % 100;
-  if (v >= 11 && v <= 13) return "th";
-  switch (n % 10) {
-    case 1:
-      return "st";
-    case 2:
-      return "nd";
-    case 3:
-      return "rd";
-    default:
-      return "th";
-  }
+const DAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function isoToDate(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
-/**
- * First tick (`includeMonth=true`) shows the month name, e.g. "May, 25th".
- * Subsequent ticks show only the ordinal day, e.g. "26th", "27th".
- */
-function formatDateTick(iso: string, includeMonth: boolean): string {
+function formatTickLabel(iso: string, range: Range): string {
   const [, m, d] = iso.split("-").map(Number);
-  const ord = `${d}${ordinalSuffix(d)}`;
-  return includeMonth ? `${TICK_MONTHS[m - 1]}, ${ord}` : ord;
+  if (range === "week") return DAY_ABBR[isoToDate(iso).getDay()];
+  if (range === "month") return `${TICK_MONTHS[m - 1]} ${d}`;
+  return TICK_MONTHS[m - 1];
+}
+
+function computeLabeledIndices(points: TrendPoint[], range: Range): Set<number> {
+  const labeled = new Set<number>();
+  if (points.length === 0) return labeled;
+
+  if (range === "week") {
+    points.forEach((_, i) => labeled.add(i));
+  } else if (range === "month") {
+    labeled.add(0);
+    labeled.add(points.length - 1);
+    const stride = Math.max(1, Math.round(points.length / 4));
+    for (let i = stride; i < points.length - 1; i += stride) labeled.add(i);
+  } else {
+    // year: one label per calendar month (first data point of each month)
+    let lastMonth = -1;
+    for (let i = 0; i < points.length; i++) {
+      const [, m] = points[i].date.split("-").map(Number);
+      if (m !== lastMonth) {
+        labeled.add(i);
+        lastMonth = m;
+      }
+    }
+  }
+
+  return labeled;
 }
 
 // Build a smooth cubic Bezier path through points. Tension ≈ Catmull-Rom.
@@ -386,4 +402,31 @@ function buildSmoothPath(pts: Array<{ x: number; y: number }>): string {
     );
   }
   return segs.join(" ");
+}
+
+function aggregateByMonth(
+  points: TrendPoint[],
+  startDate: string,
+  span: number
+): TrendPoint[] {
+  const byMonth = new Map<string, TrendPoint[]>();
+  for (const p of points) {
+    const key = p.date.substring(0, 7); // "YYYY-MM"
+    if (!byMonth.has(key)) byMonth.set(key, []);
+    byMonth.get(key)!.push(p);
+  }
+
+  return Array.from(byMonth.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, pts]) => {
+      const avgScore = pts.reduce((s, p) => s + p.score, 0) / pts.length;
+      // Use the median date of the month's entries as the x anchor
+      const midDate = pts[Math.floor(pts.length / 2)].date;
+      const x = Math.max(0, Math.min(1, dateDiffDays(startDate, midDate) / span));
+      // Find the mood label closest to the average score for color
+      const idx = Math.round((1 - avgScore) * (ALL_LABELS.length - 1));
+      const label = ALL_LABELS[Math.max(0, Math.min(ALL_LABELS.length - 1, idx))];
+      const color = getMoodDef(label)?.bg ?? NEUTRAL_COLOR;
+      return { date: midDate, x, score: avgScore, color, label };
+    });
 }
